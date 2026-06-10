@@ -558,16 +558,9 @@ function save(d) {
 // 2. Realtime Database → 创建数据库（测试模式）
 // 3. 复制数据库 URL 替换下面的 FIREBASE_URL
 var FIREBASE_URL = 'https://daily-challenge-edfe1-default-rtdb.firebaseio.com';
-var SYNC_ENABLED = false;
-
-function enableSync(url) {
-  FIREBASE_URL = url;
-  SYNC_ENABLED = true;
-  console.log('[sync] enabled: ' + url);
-}
 
 function pushToCloud(d) {
-  if (!SYNC_ENABLED || !d.syncCode) return;
+  if (!d.syncCode) return;
   try {
     var json = JSON.stringify(d);
     var xhr = new XMLHttpRequest();
@@ -1660,14 +1653,12 @@ function refreshSettings() {
 }
 
 function saveSyncConfig() {
-  var url = document.getElementById('firebase-url-input').value.trim();
   var code = document.getElementById('sync-code-input').value.trim();
   var status = document.getElementById('sync-status');
-  if (url) enableSync(url);
   var d = load();
   d.syncCode = code;
   save(d);
-  status.textContent = '已保存，数据将自动同步';
+  status.textContent = '已保存，同步码：' + (code || '(未设置)');
   status.style.color = 'var(--primary)';
 }
 
@@ -1677,13 +1668,17 @@ function manualSync() {
   if (!d.syncCode) { status.textContent = '请先输入同步码'; status.style.color = 'var(--red)'; return; }
   status.textContent = '同步中…'; status.style.color = 'var(--muted)';
   pullFromCloud(d.syncCode, function(cloudData) {
-    if (cloudData) {
+    if (cloudData && cloudData.days && Object.keys(cloudData.days).length > 0) {
       save(cloudData);
-      status.textContent = '同步完成！';
+      status.textContent = '同步完成！已下载云端数据';
+      status.style.color = 'var(--primary)';
+    } else if (cloudData && (!cloudData.days || Object.keys(cloudData.days).length === 0)) {
+      pushToCloud(d);
+      status.textContent = '云端无数据，已上传本地数据';
       status.style.color = 'var(--primary)';
     } else {
       pushToCloud(d);
-      status.textContent = '已上传本地数据';
+      status.textContent = '云端无数据，已上传本地数据';
       status.style.color = 'var(--primary)';
     }
   });
@@ -1797,10 +1792,13 @@ function init() {
   // 从云端拉取同步数据
   if (d.syncCode) {
     pullFromCloud(d.syncCode, function(cloudData) {
-      if (cloudData) {
-        // 用云端数据覆盖本地（云端优先）
-        save(cloudData);
-        d = cloudData;
+      if (cloudData && cloudData.days && Object.keys(cloudData.days).length > 0) {
+        var localDays = Object.keys(d.days||{}).length;
+        var cloudDays = Object.keys(cloudData.days).length;
+        if (cloudDays >= localDays) {
+          save(cloudData);
+          d = cloudData;
+        }
       }
       afterInit(d);
     });
